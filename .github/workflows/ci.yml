@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and unit tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Build (WPF app, libraries, tools)
+        run: dotnet build InvoiceProcessing.slnx --configuration Release
+
+      - name: Unit tests
+        run: dotnet test tests/InvoiceProcessing.Tests --configuration Release --no-build --filter "Category!=Integration"
+
+  integration:
+    name: Integration tests (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: rechnungen
+          POSTGRES_USER: rechnungen
+          POSTGRES_PASSWORD: rechnungen_local
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rechnungen -d rechnungen"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # Core and Infrastructure are cross-platform; only the WPF app needs Windows.
+      - name: All tests against PostgreSQL
+        run: dotnet test tests/InvoiceProcessing.Tests --configuration Release

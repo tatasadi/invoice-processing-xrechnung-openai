@@ -1,0 +1,450 @@
+<Window x:Class="InvoiceProcessing.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:InvoiceProcessing.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance vm:MainViewModel}"
+        Title="Rechnungsverarbeitung"
+        Width="1360" Height="860" MinWidth="1000" MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
+        Background="{StaticResource PageBackground}">
+
+    <Window.Resources>
+        <!-- Line items, used in the import details and for stored invoices -->
+        <Style x:Key="LinesGrid" TargetType="DataGrid" BasedOn="{StaticResource ReadOnlyGrid}">
+            <Setter Property="SelectionUnit" Value="FullRow" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="{StaticResource CardBackground}" BorderBrush="{StaticResource CardBorder}"
+                BorderThickness="0,0,0,1" Padding="24,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Width="42" Height="42" CornerRadius="9" Background="{StaticResource Brand}">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE8A5;" FontSize="20" Foreground="White" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Rechnungsverarbeitung" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Style="{StaticResource Muted}"
+                               Text="Eingangsrechnungen einlesen, prüfen und in PostgreSQL speichern" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border CornerRadius="15" Padding="12,6" Background="{StaticResource PageBackground}" ToolTip="{Binding DatabaseError}">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="#C42B1C" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsDatabaseOnline}" Value="True">
+                                                <Setter Property="Fill" Value="#107C10" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock Text="{Binding DatabaseStatus}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                    <Button Margin="8,0,0,0" Content="Neu verbinden" Command="{Binding ConnectDatabaseCommand}"
+                            Visibility="{Binding IsDatabaseOnline, Converter={StaticResource EmptyToCollapsed}, ConverterParameter=Invert}" />
+                    <Border CornerRadius="15" Padding="12,6" Margin="8,0,0,0" Background="{StaticResource PageBackground}"
+                            ToolTip="Modell für PDF-Rechnungen ohne E-Rechnungsdaten">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE99A;" Margin="0,0,8,0" />
+                            <TextBlock VerticalAlignment="Center">
+                                <Run Text="OpenAI · " /><Run Text="{Binding ModelName, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="1" Margin="16,10,16,0" Background="Transparent" BorderThickness="0">
+
+            <!-- ============ Import ============ -->
+            <TabItem Header="Import">
+                <Grid Margin="0,12,0,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border x:Name="DropZone" CornerRadius="10" Background="{StaticResource CardBackground}" AllowDrop="True"
+                            DragEnter="OnDragEnter" DragOver="OnDragOver" DragLeave="OnDragLeave" Drop="OnDrop">
+                        <Grid>
+                            <Rectangle x:Name="DropBorder" RadiusX="10" RadiusY="10" Stroke="#9DB7CC" StrokeThickness="1.5"
+                                       StrokeDashArray="6 4" />
+                            <Grid Margin="22,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="48" Height="48" CornerRadius="24" Background="{StaticResource BrandSoft}">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE898;" FontSize="22" Foreground="{StaticResource Brand}" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="16,0,16,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Rechnungen hierher ziehen" FontSize="17" FontWeight="SemiBold" />
+                                    <TextBlock Style="{StaticResource Muted}"
+                                               Text="PDF, XRechnung (XML) oder ZUGFeRD – auch mehrere Dateien auf einmal" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button AutomationProperties.Name="Dateien auswählen" Style="{DynamicResource AccentButtonStyle}" Click="OnSelectFiles" IsEnabled="{Binding IsIdle}"
+                                            Padding="14,7">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8E5;" Margin="0,0,8,0" />
+                                            <TextBlock Text="Dateien auswählen …" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button AutomationProperties.Name="Eingangsordner verarbeiten" Margin="8,0,0,0" Padding="14,7" Command="{Binding ImportInboxCommand}"
+                                            ToolTip="{Binding InboxPath}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" Margin="0,0,8,0" />
+                                            <TextBlock Text="Eingangsordner verarbeiten" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button AutomationProperties.Name="Eingangsordner öffnen" Margin="4,0,0,0" Padding="9,7" Command="{Binding OpenInboxFolderCommand}"
+                                            ToolTip="Eingangsordner im Explorer öffnen">
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8A7;" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Margin="2,10,2,0"
+                                Visibility="{Binding ProgressText, Converter={StaticResource EmptyToCollapsed}}">
+                        <ProgressBar Height="4" Maximum="{Binding ProgressMaximum}" Value="{Binding ProgressValue}"
+                                     Visibility="{Binding IsBusy, Converter={StaticResource EmptyToCollapsed}}" Margin="0,0,0,6" />
+                        <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="360" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Files of this session -->
+                        <Border Style="{StaticResource Card}" Padding="6">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Verarbeitete Dateien" Style="{StaticResource SectionTitle}" Margin="10,6,10,6" />
+                                <ListBox x:Name="ImportList" Grid.Row="1" ItemsSource="{Binding Imports}" SelectedItem="{Binding SelectedImport}"
+                                         SelectionChanged="OnImportSelectionChanged"
+                                         BorderThickness="0" Background="Transparent"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ImportItemViewModel}">
+                                            <Grid Margin="0,5">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Content="{Binding State}" ContentTemplate="{StaticResource StatusBadge}"
+                                                                  VerticalAlignment="Top" Margin="0,2,0,0" />
+                                                <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                                    <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding FilePath}" />
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="12"
+                                                               Foreground="{Binding State, Converter={StaticResource StatusVisual}, ConverterParameter=Foreground}" />
+                                                    <TextBlock Text="{Binding Summary}" FontSize="12" Foreground="{StaticResource MutedText}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Visibility="{Binding Summary, Converter={StaticResource EmptyToCollapsed}}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock Grid.Row="1" Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextAlignment="Center" Text="Noch keine Dateien verarbeitet.&#x0a;Rechnungen oben ablegen oder auswählen."
+                                           Visibility="{Binding Imports.Count, Converter={StaticResource EmptyToCollapsed}, ConverterParameter=Invert}" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Details of the selected file -->
+                        <Border Grid.Column="2" Style="{StaticResource Card}" Padding="0">
+                            <Grid>
+                                <TextBlock Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Text="Wählen Sie links eine Datei aus, um die ausgelesenen Daten zu sehen."
+                                           Visibility="{Binding SelectedImport, Converter={StaticResource EmptyToCollapsed}, ConverterParameter=Invert}" />
+                                <ScrollViewer x:Name="DetailScroll" VerticalScrollBarVisibility="Auto" DataContext="{Binding SelectedImport}"
+                                              Visibility="{Binding Converter={StaticResource EmptyToCollapsed}}">
+                                    <StackPanel Margin="22,20" d:DataContext="{d:DesignInstance vm:ImportItemViewModel}">
+
+                                        <Border CornerRadius="8" Padding="14,11"
+                                                Background="{Binding State, Converter={StaticResource StatusVisual}, ConverterParameter=Background}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Style="{StaticResource Icon}" FontSize="16" VerticalAlignment="Top" Margin="0,2,12,0"
+                                                           Text="{Binding State, Converter={StaticResource StatusVisual}, ConverterParameter=Glyph}"
+                                                           Foreground="{Binding State, Converter={StaticResource StatusVisual}, ConverterParameter=Foreground}" />
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Message}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                                               Foreground="{Binding State, Converter={StaticResource StatusVisual}, ConverterParameter=Foreground}" />
+                                                    <ItemsControl ItemsSource="{Binding Errors}" Margin="0,6,0,0"
+                                                                  Visibility="{Binding Errors, Converter={StaticResource EmptyToCollapsed}}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <TextBlock Text="{Binding StringFormat='• {0}'}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <TextBlock Margin="0,14,0,0" Style="{StaticResource Muted}" FontSize="12" Text="{Binding MetaText}" />
+
+                                        <StackPanel Margin="0,16,0,0" Visibility="{Binding Invoice, Converter={StaticResource EmptyToCollapsed}}">
+                                            <TextBlock Text="{Binding Invoice.Supplier.Name}" FontSize="21" FontWeight="SemiBold" />
+                                            <TextBlock FontSize="13" Foreground="{StaticResource MutedText}">
+                                                <Run Text="Rechnung " /><Run Text="{Binding Invoice.InvoiceNumber, Mode=OneWay}" FontWeight="SemiBold"
+                                                     Foreground="Black" /><Run Text=" vom " /><Run Text="{Binding Invoice.InvoiceDate, Mode=OneWay, StringFormat='dd.MM.yyyy'}" />
+                                            </TextBlock>
+
+                                            <Grid Margin="0,14,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="110" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="110" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Style="{StaticResource Muted}" Text="USt-IdNr." Margin="0,3" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Invoice.Supplier.VatId, TargetNullValue='–'}" Margin="0,3" />
+                                                <TextBlock Grid.Column="2" Style="{StaticResource Muted}" Text="Bestellnummer" Margin="0,3" />
+                                                <TextBlock Grid.Column="3" Text="{Binding Invoice.OrderReference, TargetNullValue='–'}" Margin="0,3" />
+                                                <TextBlock Grid.Row="1" Style="{StaticResource Muted}" Text="Anschrift" Margin="0,3" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SupplierAddress}" TextWrapping="Wrap" Margin="0,3" />
+                                                <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource Muted}" Text="Fällig am" Margin="0,3" />
+                                                <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding Invoice.DueDate, StringFormat='dd.MM.yyyy', TargetNullValue='–'}" Margin="0,3" />
+                                            </Grid>
+
+                                            <WrapPanel Margin="0,16,0,0">
+                                                <Border Style="{StaticResource Card}" Padding="14,10" Margin="0,0,10,0" MinWidth="150"
+                                                        Visibility="{Binding Invoice.AllowanceTotal, Converter={StaticResource EmptyToCollapsed}}">
+                                                    <StackPanel>
+                                                        <TextBlock Style="{StaticResource Muted}" Text="Abschläge" />
+                                                        <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding Invoice.AllowanceTotal, StringFormat='{}{0:N2} €'}" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource Card}" Padding="14,10" Margin="0,0,10,0" MinWidth="150">
+                                                    <StackPanel>
+                                                        <TextBlock Style="{StaticResource Muted}" Text="Netto" />
+                                                        <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding Invoice.NetTotal, StringFormat='{}{0:N2} €'}" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource Card}" Padding="14,10" Margin="0,0,10,0" MinWidth="150">
+                                                    <StackPanel>
+                                                        <TextBlock Style="{StaticResource Muted}" Text="Umsatzsteuer" />
+                                                        <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding Invoice.TaxTotal, StringFormat='{}{0:N2} €'}" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource Card}" Padding="14,10" MinWidth="150" Background="{StaticResource BrandSoft}">
+                                                    <StackPanel>
+                                                        <TextBlock Style="{StaticResource Muted}" Text="Brutto" />
+                                                        <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding Invoice.GrossTotal, StringFormat='{}{0:N2} €'}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </WrapPanel>
+
+                                            <TextBlock Text="Rechnungspositionen" Style="{StaticResource SectionTitle}" Margin="0,20,0,6" />
+                                            <DataGrid Style="{StaticResource LinesGrid}" ItemsSource="{Binding Lines}">
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Pos." Binding="{Binding LineNumber}" Width="58" ElementStyle="{StaticResource Cell}" />
+                                                    <DataGridTextColumn Header="Art.-Nr." Binding="{Binding ArticleNumber}" Width="100" ElementStyle="{StaticResource Cell}" />
+                                                    <DataGridTextColumn Header="Bezeichnung" Binding="{Binding Description}" Width="*" MinWidth="170" ElementStyle="{StaticResource WrapCell}" />
+                                                    <DataGridTextColumn Header="Menge" Binding="{Binding Quantity, StringFormat='0.##'}" Width="72" ElementStyle="{StaticResource RightCell}" />
+                                                    <DataGridTextColumn Header="Gratis" Binding="{Binding FreeQuantity, StringFormat='{}{0:0.##;-0.##;–}'}" Width="74" ElementStyle="{StaticResource RightCell}" />
+                                                    <DataGridTextColumn Header="Einheit" Binding="{Binding Unit}" Width="70" ElementStyle="{StaticResource Cell}" />
+                                                    <DataGridTextColumn Header="Einzelpreis" Binding="{Binding UnitPrice, StringFormat='N2'}" Width="98" ElementStyle="{StaticResource RightCell}" />
+                                                    <DataGridTextColumn Header="Rabatt" Binding="{Binding DiscountPercent, StringFormat='{}{0:0.##} %', TargetNullValue=''}" Width="76" ElementStyle="{StaticResource RightCell}" />
+                                                    <DataGridTextColumn Header="Rabatt €" Binding="{Binding DiscountAmount, StringFormat='N2', TargetNullValue=''}" Width="90" ElementStyle="{StaticResource RightCell}" />
+                                                    <DataGridTextColumn Header="Betrag €" Binding="{Binding NetAmount, StringFormat='N2'}" Width="86" ElementStyle="{StaticResource RightCell}" />
+                                                    <DataGridTextColumn Header="USt" Binding="{Binding VatRate, StringFormat='{}{0:0.##} %', TargetNullValue=''}" Width="64" ElementStyle="{StaticResource RightCell}" />
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- ============ Stored invoices ============ -->
+            <TabItem Header="Rechnungen">
+                <Grid Margin="0,12,0,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="3*" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="2*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button AutomationProperties.Name="Aktualisieren" Command="{Binding RefreshCommand}" Padding="12,6">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE72C;" Margin="0,0,8,0" />
+                                <TextBlock Text="Aktualisieren" />
+                            </StackPanel>
+                        </Button>
+                        <Button AutomationProperties.Name="Originaldatei öffnen" Command="{Binding OpenOriginalCommand}" Padding="12,6" Margin="8,0,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8A7;" Margin="0,0,8,0" />
+                                <TextBlock Text="Originaldatei öffnen" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="16,0,0,0"
+                                   Text="{Binding Invoices.Count, StringFormat='{}{0} Rechnungen in der Datenbank'}" />
+                    </StackPanel>
+
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="4">
+                        <DataGrid Style="{StaticResource ReadOnlyGrid}" ItemsSource="{Binding Invoices}" SelectedItem="{Binding SelectedInvoice}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Lieferant" Binding="{Binding SupplierName}" Width="2*" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Rechnungsnr." Binding="{Binding InvoiceNumber}" Width="140" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Datum" Binding="{Binding InvoiceDate, StringFormat='dd.MM.yyyy'}" Width="95" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Netto €" Binding="{Binding NetTotal, StringFormat='N2'}" Width="95" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="USt €" Binding="{Binding TaxTotal, StringFormat='N2'}" Width="85" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="Brutto €" Binding="{Binding GrossTotal, StringFormat='N2'}" Width="100" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="Pos." Binding="{Binding LineCount}" Width="50" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="Quelle" Binding="{Binding SourceFormat}" Width="125" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Datei" Binding="{Binding SourceFile}" Width="1.5*" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Importiert" Binding="{Binding ImportedAt, Converter={StaticResource LocalTime}, StringFormat='dd.MM.yyyy HH:mm'}" Width="125" ElementStyle="{StaticResource Cell}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+
+                    <Border Grid.Row="3" Style="{StaticResource Card}" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Style="{StaticResource SectionTitle}">
+                                <Run Text="Positionen" /><Run Text="{Binding SelectedInvoice.InvoiceNumber, Mode=OneWay, StringFormat=' der Rechnung {0}'}" /><Run Text="{Binding SelectedInvoice.SupplierName, Mode=OneWay, StringFormat=' · {0}'}" />
+                            </TextBlock>
+                            <DataGrid Grid.Row="1" Style="{StaticResource LinesGrid}" ItemsSource="{Binding SelectedInvoiceLines}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Pos." Binding="{Binding LineNumber}" Width="48" ElementStyle="{StaticResource Cell}" />
+                                    <DataGridTextColumn Header="Art.-Nr." Binding="{Binding ArticleNumber}" Width="110" ElementStyle="{StaticResource Cell}" />
+                                    <DataGridTextColumn Header="Bezeichnung" Binding="{Binding Description}" Width="*" ElementStyle="{StaticResource Cell}" />
+                                    <DataGridTextColumn Header="Menge" Binding="{Binding Quantity, StringFormat='0.##'}" Width="75" ElementStyle="{StaticResource RightCell}" />
+                                    <DataGridTextColumn Header="Gratis" Binding="{Binding FreeQuantity, StringFormat='{}{0:0.##;-0.##;–}'}" Width="70" ElementStyle="{StaticResource RightCell}" />
+                                    <DataGridTextColumn Header="Einheit" Binding="{Binding Unit}" Width="75" ElementStyle="{StaticResource Cell}" />
+                                    <DataGridTextColumn Header="Einzelpreis" Binding="{Binding UnitPrice, StringFormat='N2'}" Width="95" ElementStyle="{StaticResource RightCell}" />
+                                    <DataGridTextColumn Header="Rabatt" Binding="{Binding DiscountPercent, StringFormat='{}{0:0.##} %', TargetNullValue=''}" Width="75" ElementStyle="{StaticResource RightCell}" />
+                                    <DataGridTextColumn Header="Rabatt €" Binding="{Binding DiscountAmount, StringFormat='N2', TargetNullValue=''}" Width="80" ElementStyle="{StaticResource RightCell}" />
+                                    <DataGridTextColumn Header="Betrag €" Binding="{Binding NetAmount, StringFormat='N2'}" Width="95" ElementStyle="{StaticResource RightCell}" />
+                                    <DataGridTextColumn Header="USt" Binding="{Binding VatRate, StringFormat='{}{0:0.##} %', TargetNullValue=''}" Width="62" ElementStyle="{StaticResource RightCell}" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <GridSplitter Grid.Row="2" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent"
+                                  ResizeDirection="Rows" />
+
+                    <!-- No database -->
+                    <Border Grid.Row="1" Grid.RowSpan="3" Style="{StaticResource Card}"
+                            Visibility="{Binding IsDatabaseOnline, Converter={StaticResource EmptyToCollapsed}, ConverterParameter=Invert}">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="560">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="28" Foreground="#C42B1C" />
+                            <TextBlock Text="Keine Verbindung zur Datenbank" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,8,0,4" />
+                            <TextBlock Style="{StaticResource Muted}" TextAlignment="Center" Text="{Binding DatabaseError}" />
+                            <Button Content="Neu verbinden" Command="{Binding ConnectDatabaseCommand}" HorizontalAlignment="Center" Margin="0,12,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ============ Processing log ============ -->
+            <TabItem Header="Protokoll">
+                <Grid Margin="0,12,0,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button AutomationProperties.Name="Aktualisieren" Command="{Binding RefreshCommand}" Padding="12,6">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE72C;" Margin="0,0,8,0" />
+                                <TextBlock Text="Aktualisieren" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="16,0,0,0"
+                                   Text="Jede Verarbeitung wird protokolliert – erfolgreich oder nicht." />
+                    </StackPanel>
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="4">
+                        <DataGrid Style="{StaticResource ReadOnlyGrid}" ItemsSource="{Binding LogEntries}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Zeitpunkt" Binding="{Binding ProcessedAt, Converter={StaticResource LocalTime}, StringFormat='dd.MM.yyyy HH:mm:ss'}" Width="145" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTemplateColumn Header="Status" Width="200">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Style="{StaticResource Icon}" Margin="0,0,8,0"
+                                                           Text="{Binding Status, Converter={StaticResource StatusVisual}, ConverterParameter=Glyph}"
+                                                           Foreground="{Binding Status, Converter={StaticResource StatusVisual}, ConverterParameter=Foreground}" />
+                                                <TextBlock VerticalAlignment="Center" Text="{Binding Status, Converter={StaticResource LogStatusText}}"
+                                                           Foreground="{Binding Status, Converter={StaticResource StatusVisual}, ConverterParameter=Foreground}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Datei" Binding="{Binding FileName}" Width="230" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Quelle" Binding="{Binding SourceFormat}" Width="120" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Rechnung" Binding="{Binding InvoiceId}" Width="95" ElementStyle="{StaticResource Cell}" />
+                                <DataGridTextColumn Header="Meldung" Binding="{Binding Message}" Width="2*" ElementStyle="{StaticResource WrapCell}" />
+                                <DataGridTextColumn Header="Fehler" Binding="{Binding Errors}" Width="2*" ElementStyle="{StaticResource WrapCell}" />
+                                <DataGridTextColumn Header="Dauer" Binding="{Binding DurationMs, StringFormat='{}{0:N0} ms'}" Width="85" ElementStyle="{StaticResource RightCell}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Padding="24,7" Background="{StaticResource CardBackground}" BorderBrush="{StaticResource CardBorder}"
+                BorderThickness="0,1,0,0">
+            <TextBlock Style="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis">
+                <Run Text="Eingangsordner: " /><Run Text="{Binding InboxPath, Mode=OneWay}" /><Run Text="     Archiv: " /><Run Text="{Binding ArchivePath, Mode=OneWay}" />
+            </TextBlock>
+        </Border>
+    </Grid>
+</Window>

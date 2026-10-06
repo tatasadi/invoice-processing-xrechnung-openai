@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/InvoiceProcessing.App/InvoiceProcessing.App.csproj" />
+    <Project Path="src/InvoiceProcessing.Core/InvoiceProcessing.Core.csproj" />
+    <Project Path="src/InvoiceProcessing.Infrastructure/InvoiceProcessing.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/InvoiceProcessing.Tests/InvoiceProcessing.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ExtractionCheck/ExtractionCheck.csproj" />
+    <Project Path="tools/TestInvoiceGenerator/TestInvoiceGenerator.csproj" />
+  </Folder>
+</Solution>
