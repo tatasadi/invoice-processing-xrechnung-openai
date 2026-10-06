@@ -44,6 +44,9 @@ public sealed class OpenAiPdfReader(IOptions<OpenAiOptions> options, ILogger<Ope
 
     public bool CanRead(InvoiceDocument document) => document.Extension == ".pdf";
 
+    /// <summary>The model can misread a character, and a second read usually doesn't repeat it (see DECISIONS.md, ADR-010).</summary>
+    public bool ReadAgainOnValidationFailure => true;
+
     public async Task<ExtractionResult> ReadAsync(InvoiceDocument document, CancellationToken ct)
     {
         var settings = options.Value;

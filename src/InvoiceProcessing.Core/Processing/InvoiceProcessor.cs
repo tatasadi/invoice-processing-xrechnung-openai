@@ -65,9 +65,22 @@ public sealed class InvoiceProcessor(
                 return new(ProcessingStatus.Failed, $"Dateiformat \"{document.Extension}\" wird nicht unterstützt (PDF oder XML).");
 
             ExtractionResult extraction;
+            IReadOnlyList<string> errors;
+            var secondRead = false;
             try
             {
-                extraction = await reader.ReadAsync(document, ct);
+                extraction = await ReadAsync(reader, document, ct);
+                errors = validator.Validate(extraction.Invoice);
+
+                // An AI read can get a single character wrong (e.g. 184,27 instead of 185,27). Read once more before
+                // rejecting: a misread is usually not repeated, a wrongly printed invoice fails again.
+                if (errors.Count > 0 && reader.ReadAgainOnValidationFailure)
+                {
+                    logger.LogInformation("{File}: Prüfung fehlgeschlagen ({Errors}) – zweites Lesen", document.FileName, string.Join(" | ", errors));
+                    extraction = await ReadAsync(reader, document, ct);
+                    errors = validator.Validate(extraction.Invoice);
+                    secondRead = true;
+                }
             }
             catch (InvoiceReadException ex)
             {
@@ -75,20 +88,22 @@ public sealed class InvoiceProcessor(
             }
 
             var invoice = extraction.Invoice;
-            logger.LogInformation("{File}: {Description}; Rechnung {InvoiceNumber} von {Supplier}, {LineCount} Positionen, {Gross} {Currency} brutto",
-                document.FileName, extraction.Description, invoice.InvoiceNumber, invoice.Supplier.Name, invoice.Lines.Count,
-                invoice.GrossTotal.ToString("N2", German), invoice.Currency);
-
             var read = new ProcessingOutcome(ProcessingStatus.Imported, "")
             {
                 Format = extraction.Format,
-                Description = extraction.Description,
+                Description = secondRead ? $"{extraction.Description} · zweimal gelesen" : extraction.Description,
                 Invoice = invoice,
             };
 
-            var errors = validator.Validate(invoice);
             if (errors.Count > 0)
-                return read with { Status = ProcessingStatus.ValidationFailed, Message = "Prüfung fehlgeschlagen – nicht gespeichert.", Errors = errors };
+            {
+                var message = secondRead
+                    ? "Prüfung fehlgeschlagen, auch nach zweitem Lesen – nicht gespeichert."
+                    : "Prüfung fehlgeschlagen – nicht gespeichert.";
+                return read with { Status = ProcessingStatus.ValidationFailed, Message = message, Errors = errors };
+            }
+
+            var passed = secondRead ? "Prüfung beim zweiten Lesen bestanden" : "Prüfung bestanden";
 
             var keys = InvoiceKeyFactory.Create(invoice);
             var duplicate = await repository.FindDuplicateAsync(invoice, keys, ct);
@@ -106,7 +121,7 @@ public sealed class InvoiceProcessor(
             try
             {
                 var id = await repository.InsertAsync(invoice, new InvoiceSource(document.FileName, document.Sha256, extraction.Format, keys, archivePath), ct);
-                return read with { Message = $"Prüfung bestanden – gespeichert (ID {id}).", InvoiceId = id };
+                return read with { Message = $"{passed} – gespeichert (ID {id}).", InvoiceId = id };
             }
             catch (Exception ex)
             {
@@ -125,5 +140,15 @@ public sealed class InvoiceProcessor(
             logger.LogError(ex, "Unerwarteter Fehler bei {File}", document.FileName);
             return new(ProcessingStatus.Failed, $"Unerwarteter Fehler: {ex.Message}");
         }
+    }
+
+    private async Task<ExtractionResult> ReadAsync(IInvoiceReader reader, InvoiceDocument document, CancellationToken ct)
+    {
+        var extraction = await reader.ReadAsync(document, ct);
+        var invoice = extraction.Invoice;
+        logger.LogInformation("{File}: {Description}; Rechnung {InvoiceNumber} von {Supplier}, {LineCount} Positionen, {Gross} {Currency} brutto",
+            document.FileName, extraction.Description, invoice.InvoiceNumber, invoice.Supplier.Name, invoice.Lines.Count,
+            invoice.GrossTotal.ToString("N2", German), invoice.Currency);
+        return extraction;
     }
 }

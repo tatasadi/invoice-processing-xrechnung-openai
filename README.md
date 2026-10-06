@@ -36,7 +36,7 @@ accounting teams. Code, comments and documentation are English.
 | E-invoices | XRechnung UBL + CII and ZUGFeRD / Factur-X via [ZUGFeRD-csharp](https://github.com/stephanstapel/ZUGFeRD-csharp); embedded XML found with [PdfPig](https://github.com/UglyToad/PdfPig) |
 | PDF invoices | OpenAI Chat Completions with PDF file input and a strict JSON schema; `store = false` |
 | Data | Supplier, VAT ID, invoice number, dates, order reference, totals; per line: article number, description, quantity, free/bonus quantity, unit, unit price, discount, net amount, VAT rate |
-| Validation | Required fields, plausible date, quantity × price − discount per line, sum of lines − allowances + charges = net, net + VAT = gross, VAT per rate |
+| Validation | Required fields, plausible date, quantity × price − discount per line, sum of lines − allowances + charges = net, net + VAT = gross, VAT per rate. An AI-read invoice that fails is read a second time before it is rejected |
 | Duplicates | Same file (SHA-256); same supplier + invoice number (normalized); same number + date + gross amount; unique constraints in the database |
 | Storage | PostgreSQL (header and lines in one transaction); original file in an archive folder (`yyyy\MM`) |
 | Traceability | Every run in the table `processing_log` (also errors and duplicates) and in a daily log file |
@@ -82,7 +82,7 @@ accounting teams. Code, comments and documentation are English.
                         │  InvoiceProcessor                            │
                         │  1. duplicate? (SHA-256 of the file)         │
                         │  2. read with the first matching reader ─────┼──┐
-                        │  3. validate                                 │  │
+                        │  3. validate (AI read fails → read again)    │  │
                         │  4. duplicate? (supplier + invoice number)   │  │
                         │  5. archive original + store in PostgreSQL   │  │
                         │  6. write processing log                     │  │
@@ -200,7 +200,7 @@ against a PostgreSQL service container.
 The main choices and their alternatives are documented in [DECISIONS.md](DECISIONS.md), among them: AI only as a
 fallback for PDFs, Structured Outputs with direct PDF input, the choice of `gpt-5.4-mini` (measured against
 `gpt-5-mini`), the validation gate before storage, duplicate detection on three levels and Dapper with plain SQL
-instead of an ORM.
+instead of an ORM, and the second read for AI-extracted invoices that fail validation.
 
 ## Data protection and limits
 

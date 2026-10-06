@@ -234,3 +234,38 @@ excluded. QuestPDF (community license) is used only by the test invoice generato
 ### Consequences
 
 The application can be extended and redistributed by the operator without licensing questions.
+
+---
+
+## ADR-010 — Second read for AI-extracted invoices that fail validation
+
+**Status**: Accepted
+**Date**: 2026-10
+
+### Context
+
+In repeated runs over the test invoices, `gpt-5.4-mini` once read the VAT of a correct invoice as 184,27 instead of
+185,27 — about one misread in six reads of that invoice. The validation (ADR-005) caught it, but a valid invoice was
+rejected and would have needed manual work.
+
+### Decision
+
+Readers declare whether their result can vary between reads (`IInvoiceReader.ReadAgainOnValidationFailure`; true for
+`OpenAiPdfReader`, false for the XML readers). If such a result fails validation, `InvoiceProcessor` reads the
+document once more and validates again. Only if the second result also fails is the invoice rejected. The outcome
+says so ("Prüfung beim zweiten Lesen bestanden" / "auch nach zweitem Lesen"), and the log keeps the errors of the
+first read.
+
+### Alternatives Considered
+
+| Option | Verdict |
+|---|---|
+| Accept the rejection | Correct but costly: valid invoices end up in manual handling |
+| Let the model fix its own result ("the totals don't match, check again") | Invites the model to adjust values until they add up, which defeats the validation |
+| Read twice always and compare | Doubles cost and time for every PDF, although most first reads are correct |
+| A larger model | Lower but not zero misread rate; slower and more expensive for every invoice |
+
+### Consequences
+
+A single misread usually corrects itself; a genuinely wrong invoice (test invoice 06) is still rejected, because both
+reads report the same printed values. The extra API call is only made when validation fails.

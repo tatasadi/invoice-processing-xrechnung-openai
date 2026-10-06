@@ -12,6 +12,12 @@ public interface IInvoiceReader
     bool CanRead(InvoiceDocument document);
 
     Task<ExtractionResult> ReadAsync(InvoiceDocument document, CancellationToken ct);
+
+    /// <summary>
+    /// True for readers whose result can vary between reads (AI). If such a result fails validation, the processor
+    /// reads the document once more before rejecting it. Deterministic readers (XML) return false.
+    /// </summary>
+    bool ReadAgainOnValidationFailure => false;
 }
 
 /// <param name="Invoice">The extracted invoice.</param>

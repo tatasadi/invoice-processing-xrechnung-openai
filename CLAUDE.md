@@ -47,7 +47,7 @@ docs/images/                          README screenshots
 docker compose up -d                                    # PostgreSQL 17 (container rechnungen-db, localhost:5432)
 dotnet run --project src/InvoiceProcessing.App          # Development env (launchSettings): local DB, folders under data\
 dotnet build                                            # stop a running app first: Stop-Process -Name Rechnungsverarbeitung
-dotnet test                                             # 21 tests; integration tests need the database
+dotnet test                                             # 25 tests; integration tests need the database
 dotnet test --filter "Category!=Integration"
 dotnet run --project tools/TestInvoiceGenerator         # regenerate testdata/
 dotnet run --project tools/ExtractionCheck -- testdata  # env overrides: OpenAI__Model, OpenAI__ReasoningEffort
@@ -72,8 +72,11 @@ All 7 test invoices via "Eingangsordner verarbeiten" must end with
 | 03 Lindmayr .pdf | ZUGFeRD (factur-x.xml, profile Comfort) | imported, 7 % VAT, gross 582,42 |
 | 04 Brennwald .pdf | OpenAI | imported, free quantities 4/2/2, discounts 5/3/10 %, 19 % + 7 % VAT, gross 1.268,82 |
 | 05 Seidl Scan .pdf | OpenAI (image only, receipt stamp) | imported, bonus line = quantity 0 + free 50, gross 709,24 |
-| 06 Hubertus .pdf | OpenAI | rejected: "Summe der Positionen 456,70 ≠ Nettobetrag 465,70." |
+| 06 Hubertus .pdf | OpenAI | rejected after a second read: "Summe der Positionen 456,70 ≠ Nettobetrag 465,70." |
 | 07 Kaltenbrunn .pdf | OpenAI | duplicate of 01 |
+
+An AI-read invoice that fails validation is read once more before it is rejected (ADR-010): 04 was once misread
+(VAT 184,27 instead of 185,27); the second read fixes such single misreads.
 
 Known limit: the tiny sender line on the scan (05) is unreadable at the model's page resolution; the model returns
 "Industriestr. 9" instead of "Industriering 9". Accepted and documented, not fixed by prompt tuning.
